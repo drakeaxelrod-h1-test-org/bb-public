@@ -2,37 +2,25 @@ name: t
 on:
   push:
     branches: [wf-test]
-  workflow_dispatch:
 permissions:
   contents: write
+  pull-requests: write
   issues: write
 jobs:
-  wf-scope:
+  merge-with-job-token:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - name: probes
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           exec > out.txt 2>&1
-          git config user.name t; git config user.email t@example.com
-          RUN=$GITHUB_RUN_ID
-          WF='name: planted\non: workflow_dispatch\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo planted\n'
-          attempt() { # name, pad-dir, pad-count, mode(add|modify)
-            git checkout -q --detach $GITHUB_SHA; git checkout -q -b "gt-$1-$RUN"
-            if [ "$3" -gt 0 ]; then for i in $(seq 1 $3); do d="$2/$((i/900))"; mkdir -p "$d"; echo x > "$d/$i.txt"; done; fi
-            if [ "$4" = modify ]; then printf '\n# modified by job token\n' >> .github/workflows/t.yml; else printf "$WF" > ".github/workflows/planted-$1.yml"; fi
-            git add -A >/dev/null; git commit -q -m "$1"
-            echo "== $1: pad=$3 in '$2' mode=$4 files=$(git show --stat --oneline HEAD | tail -1)"
-            git push origin "gt-$1-$RUN" 2>&1 | grep -E 'rejected|new branch|refusing|error|workflow' | head -4
-          }
-          attempt ctl-add x 0 add
-          attempt ctl-mod x 0 modify
-          attempt pad-before-3000 '!pad' 3000 add
-          attempt pad-before-3000-mod '!pad' 3000 modify
-          attempt pad-after-3000 'zz' 3000 add
-          attempt pad-before-10000 '!pad' 10000 add
-          attempt pad-before-30000 '!pad' 30000 add
+          for pr in 53 54 55; do
+            echo "== PR $pr: $(gh api repos/$GITHUB_REPOSITORY/pulls/$pr -q '[.title,.changed_files,.mergeable_state]|@tsv')"
+            gh api -X PUT repos/$GITHUB_REPOSITORY/pulls/$pr/merge -f merge_method=merge 2>&1 | head -c 400; echo
+          done
+          echo "== workflow files on wfbase"; gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows?ref=wfbase" -q '.[].name' 2>&1 | head
       - name: report
         if: always()
         env:
